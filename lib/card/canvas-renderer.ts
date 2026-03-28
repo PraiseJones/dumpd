@@ -2,6 +2,8 @@ import type { ThemeConfig } from '@/types/card'
 import type { Answers } from '@/types/quiz'
 import { THEMES } from './themes'
 import { generateCardContent, getStatsForCard } from './title-generator'
+import * as fs from 'fs'
+import * as path from 'path'
 
 // Canvas dimensions
 const POSTER_W = 1080
@@ -16,11 +18,52 @@ interface RenderOptions {
   aspect: '4:5' | '1:1'
 }
 
-// Using any for canvas context to avoid napi-rs type conflicts
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CanvasLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CanvasRenderingContext2DLike = any
+
+let fontsLoaded = false
+
+async function ensureFontsLoaded() {
+  if (fontsLoaded) return
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { GlobalFonts } = await import('@napi-rs/canvas') as any
+
+  // Try to register custom fonts from public/fonts/ (TTF format)
+  const fontsDir = path.join(process.cwd(), 'public', 'fonts')
+  const customFonts = [
+    { file: 'ClashDisplay-Bold.ttf', family: 'ClashDisplay' },
+    { file: 'ClashDisplay-Semibold.ttf', family: 'ClashDisplay' },
+    { file: 'GeneralSans-Variable.ttf', family: 'GeneralSans' },
+    { file: 'GeneralSans-Regular.ttf', family: 'GeneralSans' },
+    { file: 'GeneralSans-Medium.ttf', family: 'GeneralSans' },
+    { file: 'GeneralSans-Semibold.ttf', family: 'GeneralSans' },
+    { file: 'GeneralSans-Bold.ttf', family: 'GeneralSans' },
+  ]
+
+  for (const font of customFonts) {
+    const fontPath = path.join(fontsDir, font.file)
+    if (fs.existsSync(fontPath)) {
+      GlobalFonts.registerFromPath(fontPath, font.family)
+    }
+  }
+
+  // Load system fonts as fallback (provides 'sans-serif' etc)
+  GlobalFonts.loadSystemFonts()
+
+  fontsLoaded = true
+}
+
+// Returns 'ClashDisplay' if registered, otherwise 'sans-serif'
+function headingFont(registeredFamilies: Set<string>): string {
+  return registeredFamilies.has('ClashDisplay') ? 'ClashDisplay' : 'sans-serif'
+}
+
+function bodyFont(registeredFamilies: Set<string>): string {
+  return registeredFamilies.has('GeneralSans') ? 'GeneralSans' : 'sans-serif'
+}
 
 function hexToRgb(hex: string): [number, number, number] {
   const r = parseInt(hex.slice(1, 3), 16)
@@ -32,8 +75,6 @@ function hexToRgb(hex: string): [number, number, number] {
 function drawFilmGrain(ctx: CanvasRenderingContext2DLike, w: number, h: number, opacity: number) {
   ctx.save()
   ctx.globalAlpha = opacity
-
-  // Draw random noise dots
   const dotCount = Math.floor(w * h * 0.003)
   for (let i = 0; i < dotCount; i++) {
     const x = Math.random() * w
@@ -45,22 +86,16 @@ function drawFilmGrain(ctx: CanvasRenderingContext2DLike, w: number, h: number, 
     ctx.arc(x, y, radius, 0, Math.PI * 2)
     ctx.fill()
   }
-
   ctx.restore()
 }
 
 function drawBackground(ctx: CanvasRenderingContext2DLike, w: number, h: number, theme: ThemeConfig) {
-  // Base fill
   ctx.fillStyle = theme.background
   ctx.fillRect(0, 0, w, h)
 
-  // Gradient 1
   const g1 = ctx.createRadialGradient(
-    theme.gradient1.x * w,
-    theme.gradient1.y * h,
-    0,
-    theme.gradient1.x * w,
-    theme.gradient1.y * h,
+    theme.gradient1.x * w, theme.gradient1.y * h, 0,
+    theme.gradient1.x * w, theme.gradient1.y * h,
     theme.gradient1.radius * Math.max(w, h)
   )
   const [r1, g1c, b1] = hexToRgb(theme.gradient1.colors[0])
@@ -69,14 +104,10 @@ function drawBackground(ctx: CanvasRenderingContext2DLike, w: number, h: number,
   ctx.fillStyle = g1
   ctx.fillRect(0, 0, w, h)
 
-  // Gradient 2 (optional)
   if (theme.gradient2) {
     const g2 = ctx.createRadialGradient(
-      theme.gradient2.x * w,
-      theme.gradient2.y * h,
-      0,
-      theme.gradient2.x * w,
-      theme.gradient2.y * h,
+      theme.gradient2.x * w, theme.gradient2.y * h, 0,
+      theme.gradient2.x * w, theme.gradient2.y * h,
       theme.gradient2.radius * Math.max(w, h)
     )
     const [r2, g2c, b2] = hexToRgb(theme.gradient2.colors[0])
@@ -103,13 +134,10 @@ function wrapText(
   for (let i = 0; i < words.length; i++) {
     const testLine = line + words[i] + ' '
     const { width } = ctx.measureText(testLine)
-
     if (width > maxWidth && line !== '') {
       if (lineCount < maxLines) {
         if (lineCount === maxLines - 1 && i < words.length - 1) {
-          // Truncate last line
-          const truncated = line.trim() + '…'
-          ctx.fillText(truncated, x, y + lineCount * lineHeight)
+          ctx.fillText(line.trim() + '…', x, y + lineCount * lineHeight)
         } else {
           ctx.fillText(line.trim(), x, y + lineCount * lineHeight)
         }
@@ -131,11 +159,7 @@ function wrapText(
 
 function drawRoundedRect(
   ctx: CanvasRenderingContext2DLike,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
+  x: number, y: number, w: number, h: number, r: number
 ) {
   if (ctx.roundRect) {
     ctx.beginPath()
@@ -156,19 +180,26 @@ function drawRoundedRect(
 }
 
 export async function renderCard(options: RenderOptions): Promise<{ poster: Buffer; square: Buffer }> {
-  // Dynamic import to avoid bundling in edge runtime
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createCanvas } = await import('@napi-rs/canvas')
+  await ensureFontsLoaded()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { createCanvas, GlobalFonts } = await import('@napi-rs/canvas') as any
+
+  // Detect which font families are actually registered
+  const registeredFamilies = new Set<string>(
+    (GlobalFonts.families as Array<{ family: string }>).map((f) => f.family)
+  )
 
   const { answers, theme: themeName, month } = options
   const theme = THEMES[themeName] ?? THEMES.noir
   const { title, subtitle, narrative } = generateCardContent(answers as Answers, month)
   const stats = getStatsForCard(answers as Answers)
 
-  // Render both aspects
+  const fonts = { heading: headingFont(registeredFamilies), body: bodyFont(registeredFamilies) }
+
   const [poster, square] = await Promise.all([
-    renderSingleCard(createCanvas as CanvasLike, POSTER_W, POSTER_H, theme, { title, subtitle, narrative, stats, month }),
-    renderSingleCard(createCanvas as CanvasLike, SQUARE_W, SQUARE_H, theme, { title, subtitle, narrative, stats, month }),
+    renderSingleCard(createCanvas as CanvasLike, POSTER_W, POSTER_H, theme, { title, subtitle, narrative, stats, month, fonts }),
+    renderSingleCard(createCanvas as CanvasLike, SQUARE_W, SQUARE_H, theme, { title, subtitle, narrative, stats, month, fonts }),
   ])
 
   return { poster, square }
@@ -185,18 +216,19 @@ async function renderSingleCard(
     narrative: string
     stats: ReturnType<typeof getStatsForCard>
     month: string
+    fonts: { heading: string; body: string }
   }
 ): Promise<Buffer> {
   const canvas = createCanvas(w, h)
   const ctx = canvas.getContext('2d')
-  const { title, subtitle, narrative, stats, month } = content
+  const { title, subtitle, narrative, stats, month, fonts } = content
   const isSquare = w === h
   const pad = Math.round(w * 0.07)
 
   // ── 1. Background ──────────────────────────────────────────────
   drawBackground(ctx, w, h, theme)
 
-  // ── 2. Top horizontal line accent ──────────────────────────────
+  // ── 2. Top accent line ─────────────────────────────────────────
   const [hr, hg, hb] = hexToRgb(theme.highlight)
   const lineGrad = ctx.createLinearGradient(pad, 0, w - pad, 0)
   lineGrad.addColorStop(0, 'rgba(0,0,0,0)')
@@ -212,13 +244,12 @@ async function renderSingleCard(
 
   // ── 3. Month label ─────────────────────────────────────────────
   const monthY = pad * 1.25
-  ctx.font = `500 ${Math.round(w * 0.026)}px 'GeneralSans', sans-serif`
+  ctx.font = `500 ${Math.round(w * 0.026)}px '${fonts.body}', sans-serif`
   ctx.fillStyle = theme.monthColor
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
   ctx.fillText(month.toUpperCase(), pad, monthY)
 
-  // Dumpd label (right aligned)
   ctx.textAlign = 'right'
   ctx.fillStyle = theme.watermarkColor
   ctx.fillText('DUMPD', w - pad, monthY)
@@ -228,19 +259,17 @@ async function renderSingleCard(
   const titleY = isSquare ? h * 0.22 : h * 0.17
   const titleSize = isSquare ? Math.round(w * 0.075) : Math.round(w * 0.082)
 
-  ctx.font = `700 ${titleSize}px 'ClashDisplay', sans-serif`
+  ctx.font = `700 ${titleSize}px '${fonts.heading}', sans-serif`
   ctx.fillStyle = theme.titleColor
   ctx.textBaseline = 'top'
-
-  // Title shadow for depth
   ctx.shadowColor = theme.highlight + '44'
   ctx.shadowBlur = 40
   wrapText(ctx, title, pad, titleY, w - pad * 2, titleSize * 1.2, 3)
   ctx.shadowBlur = 0
 
-  // ── 5. Subtitle (one-word) ────────────────────────────────────
+  // ── 5. Subtitle ───────────────────────────────────────────────
   const subtitleY = isSquare ? h * 0.4 : h * 0.33
-  ctx.font = `600 ${Math.round(w * 0.04)}px 'ClashDisplay', sans-serif`
+  ctx.font = `600 ${Math.round(w * 0.04)}px '${fonts.heading}', sans-serif`
   ctx.fillStyle = theme.subtitleColor
   ctx.textBaseline = 'top'
   ctx.fillText(subtitle, pad, subtitleY)
@@ -268,12 +297,10 @@ async function renderSingleCard(
     const sx = pad + col * (statW + pad * 0.5)
     const sy = statsStartY + row * (statH + statGap)
 
-    // Stat card background
     ctx.fillStyle = theme.statBackground
     drawRoundedRect(ctx, sx, sy, statW, statH, 12)
     ctx.fill()
 
-    // Stat card border
     ctx.strokeStyle = theme.statBorder
     ctx.lineWidth = 1
     drawRoundedRect(ctx, sx, sy, statW, statH, 12)
@@ -288,13 +315,13 @@ async function renderSingleCard(
 
     // Label
     const labelX = sx + 12 + emojiSize + 8
-    ctx.font = `400 ${Math.round(statH * 0.24)}px 'GeneralSans', sans-serif`
+    ctx.font = `400 ${Math.round(statH * 0.24)}px '${fonts.body}', sans-serif`
     ctx.fillStyle = theme.narrativeColor
     ctx.textBaseline = 'middle'
     ctx.fillText(stat.label, labelX, sy + statH * 0.35)
 
     // Value
-    ctx.font = `700 ${Math.round(statH * 0.3)}px 'GeneralSans', sans-serif`
+    ctx.font = `700 ${Math.round(statH * 0.3)}px '${fonts.body}', sans-serif`
     ctx.fillStyle = theme.titleColor
     ctx.fillText(stat.value, labelX, sy + statH * 0.68)
   })
@@ -304,7 +331,7 @@ async function renderSingleCard(
   const narrativeY = statsEndY + pad * 0.7
   const narrativeFontSize = Math.round(w * 0.028)
 
-  ctx.font = `400 ${narrativeFontSize}px 'GeneralSans', sans-serif`
+  ctx.font = `400 ${narrativeFontSize}px '${fonts.body}', sans-serif`
   ctx.fillStyle = theme.narrativeColor
   ctx.textBaseline = 'top'
   wrapText(ctx, narrative, pad, narrativeY, w - pad * 2, narrativeFontSize * 1.6, 3)
@@ -318,7 +345,7 @@ async function renderSingleCard(
   ctx.lineTo(w - pad, barY - 20)
   ctx.stroke()
 
-  ctx.font = `500 ${Math.round(w * 0.022)}px 'GeneralSans', sans-serif`
+  ctx.font = `500 ${Math.round(w * 0.022)}px '${fonts.body}', sans-serif`
   ctx.fillStyle = theme.watermarkColor
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
