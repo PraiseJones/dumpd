@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+/* ─── Dumpd Design Tokens ────────────────────────────────────────── */
+@theme inline {
+  /* Brand colors */
+  --color-dumpd-void: #080808;
+  --color-dumpd-noir: #0f0f0f;
+  --color-dumpd-card: #141414;
+  --color-dumpd-surface: #1a1a1a;
+  --color-dumpd-border: #2a2a2a;
+
+  /* Accents */
+  --color-dumpd-violet: #7c3aed;
+  --color-dumpd-violet-light: #a78bfa;
+  --color-dumpd-pink: #ec4899;
+  --color-dumpd-cyan: #06b6d4;
+  --color-dumpd-amber: #f59e0b;
+  --color-dumpd-red: #ef4444;
+
+  /* Text */
+  --color-dumpd-white: #f8fafc;
+  --color-dumpd-muted: #94a3b8;
+  --color-dumpd-subtle: #475569;
+
+  /* Fonts */
+  --font-clash: 'ClashDisplay', ui-sans-serif, system-ui, sans-serif;
+  --font-general: 'GeneralSans', ui-sans-serif, system-ui, sans-serif;
+
+  /* Animations */
+  --animate-marquee: marquee 30s linear infinite;
+  --animate-marquee-reverse: marquee-reverse 30s linear infinite;
+  --animate-grain: grain 0.6s steps(1) infinite;
+  --animate-pulse-slow: pulse-slow 4s ease-in-out infinite;
+  --animate-float: float 3s ease-in-out infinite;
+}
+
+/* ─── Keyframes ───────────────────────────────────────────────────── */
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes marquee-reverse {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0%); }
+}
+
+@keyframes grain {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-2%, -3%); }
+  30% { transform: translate(3%, 2%); }
+  50% { transform: translate(-1%, 4%); }
+  70% { transform: translate(2%, -1%); }
+  90% { transform: translate(-3%, 1%); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+/* ─── Local Fonts ─────────────────────────────────────────────────── */
+@font-face {
+  font-family: 'ClashDisplay';
+  src: url('/fonts/ClashDisplay-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ClashDisplay';
+  src: url('/fonts/ClashDisplay-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'GeneralSans';
+  src: url('/fonts/GeneralSans-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ─── Base Styles ─────────────────────────────────────────────────── */
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-dumpd-void);
+  color: var(--color-dumpd-white);
+  font-family: var(--font-general);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-dumpd-noir);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-dumpd-subtle);
+  border-radius: 2px;
+}
+
+/* Selection */
+::selection {
+  background: var(--color-dumpd-violet);
+  color: #fff;
+}
+
+/* ─── Utility classes ─────────────────────────────────────────────── */
+.font-clash {
+  font-family: var(--font-clash);
+}
+
+.font-general {
+  font-family: var(--font-general);
+}
+
+.animate-marquee {
+  animation: var(--animate-marquee);
+}
+
+.animate-marquee-reverse {
+  animation: var(--animate-marquee-reverse);
+}
+
+.animate-grain {
+  animation: var(--animate-grain);
+}
+
+.animate-pulse-slow {
+  animation: var(--animate-pulse-slow);
+}
+
+.animate-float {
+  animation: var(--animate-float);
+}
+
+/* Film grain overlay */
+.grain-overlay {
+  position: fixed;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 100;
+  animation: var(--animate-grain);
+}
