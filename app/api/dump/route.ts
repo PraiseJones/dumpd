@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Dump insert error:', error)
-      return NextResponse.json({ error: 'Failed to save dump' }, { status: 500 })
+      return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: 500 })
     }
 
     return NextResponse.json({ id: data.id })
